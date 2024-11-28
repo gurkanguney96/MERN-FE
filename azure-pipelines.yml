@@ -1,0 +1,52 @@
+trigger:
+  branches:
+    include:
+    - master
+  paths:
+    exclude:
+    - azure-pipelines.yaml
+
+variables:
+  imageName: 'mern-fe'
+
+stages:
+- stage: Build
+  jobs:
+  - job: BuildAndPush
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - script: echo "Building Docker image..."
+    - task: Docker@2
+      inputs:
+        containerRegistry: 'Harbor'
+        repository: 'mern/$(imageName)'
+        command: 'build'
+        Dockerfile: '**/Dockerfile'
+        tags: |
+          latest
+      
+    - script: echo "Pushing Docker image..."
+    - task: Docker@2
+      inputs:
+        containerRegistry: 'Harbor'
+        repository: 'mern/$(imageName)'
+        command: 'push'
+        tags: |
+          latest
+
+- stage: Deploy
+  jobs:
+  - job: DeployToK8S
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+      - script: |
+          sed -i 's|image: harbor.<your-domain-name>/mern/$(imageName):.*|image: harbor.<your-domain-name>/mern/$(imageName):latest|g' deployment.yaml
+        displayName: 'Update image tag in deployment.yaml'
+      - task: KubernetesManifest@1
+        inputs:
+          action: 'deploy'
+          connectionType: 'kubernetesServiceConnection'
+          kubernetesServiceConnection: 'K8s'
+          manifests: 'deployment.yaml'
